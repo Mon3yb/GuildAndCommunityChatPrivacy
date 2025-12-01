@@ -1,0 +1,60 @@
+# .github/workflows/release-zip.yml
+name: Attach addon zip to releases
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload-zip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare addon folder
+        run: |
+          ADDON_NAME="HideCommunitiesChat"
+          mkdir "$ADDON_NAME"
+          cp -r $ADDON_NAME.* "$ADDON_NAME"/ || true
+
+      - name: Remove excluded files
+        run: |
+          # Define files or patterns to exclude from the ZIP
+          # Add paths relative to the addon root folder
+          EXCLUDE_LIST=(
+            "LICENSE"
+            "*.md"
+          )
+
+          ADDON_NAME="HideCommunitiesChat"
+
+          for pattern in "${EXCLUDE_LIST[@]}"; do
+            # Expand the pattern inside the addon folder
+            matches=$(find "$ADDON_NAME" -type f -name "$pattern" 2>/dev/null)
+            if [ -n "$matches" ]; then
+              echo "Excluding: $matches"
+              # Delete each matched file
+              while IFS= read -r file; do
+                rm "$file"
+              done <<< "$matches"
+            fi
+          done
+
+      - name: Create zip
+        run: |
+          RELEASE_NAME="${{ github.event.release.name }}"
+          ADDON_NAME="HideCommunitiesChat"
+          zip -r "${RELEASE_NAME}.zip" "$ADDON_NAME"
+
+      - name: Upload zip to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          RELEASE_NAME="${{ github.event.release.name }}"
+          gh release upload "$TAG_NAME" "${RELEASE_NAME}.zip" --clobber
