@@ -48,6 +48,7 @@ jobs:
             "LICENSE"
             "*.md"
             "*.txt"
+            "*.git"
             ".github"
             "*.psd"
             "*.png"
