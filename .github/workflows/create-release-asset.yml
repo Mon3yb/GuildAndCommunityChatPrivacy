@@ -29,6 +29,7 @@ jobs:
           EXCLUDE_LIST=(
             "LICENSE"
             "*.md"
+            ".github"
           )
 
           ADDON_NAME="HideCommunitiesChat"
