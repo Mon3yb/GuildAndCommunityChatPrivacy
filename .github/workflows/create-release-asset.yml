@@ -51,6 +51,7 @@ jobs:
             ".github"
             "*.psd"
             "*.png"
+            "*.json"
           )
 
           echo "Cleaning patterns in repository root"
