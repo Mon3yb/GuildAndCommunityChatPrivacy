@@ -3,6 +3,12 @@ name: Build release zip
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to upload asset to (e.g. v1.0.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,65 +18,83 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Repo name from the event payload, e.g. "HideCommunityChat"
       REPO_NAME: ${{ github.event.repository.name }}
-      # Tag name of the release, e.g. "v1.0.0" or "1.0.0"
-      TAG_NAME: ${{ github.event.release.tag_name }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Compute archive name
+      - name: Determine tag and version
         id: vars
         run: |
-          # Strip a leading "v" from the tag if present (v1.0.0 -> 1.0.0)
-          VERSION="${TAG_NAME#v}"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          else
+            TAG_NAME="${{ inputs.tag_name }}"
+          fi
 
+          VERSION="${TAG_NAME#v}"   # strip leading "v"
           ZIP_NAME="${REPO_NAME}-${VERSION}.zip"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
 
-            # Remove files you don't want in the zip
-            
+      # ---------------------------------------------------------
+      # Remove excluded files / folders matching patterns
+      # ---------------------------------------------------------
       - name: Remove excluded files
         run: |
-          ADDON_NAME="HideCommunityChat"
-
-          # Define files or patterns to exclude (relative to addon root)
           EXCLUDE_LIST=(
             "LICENSE"
             "*.md"
+            "*.txt"
             ".github"
+            "*.psd"
+            "*.png"
           )
 
-          for pattern in "${EXCLUDE_LIST[@]}"; do
-            matches=$(find "$ADDON_NAME" -type f -name "$pattern" 2>/dev/null || true)
+          echo "Cleaning patterns in repository root"
 
+          for pattern in "${EXCLUDE_LIST[@]}"; do
+            echo "Processing pattern: $pattern"
+
+            # Remove files matching pattern
+            matches=$(find . -type f -name "$pattern" 2>/dev/null || true)
             if [ -n "$matches" ]; then
-              echo "Excluding pattern '$pattern':"
-              echo "$matches"
-              while IFS= read -r file; do
-                rm "$file"
-              done <<< "$matches"
-            else
-              echo "No matches for pattern '$pattern'"
+              echo "$matches" | while IFS= read -r file; do
+                echo "Removing file: $file"
+                rm -f "$file"
+              done
             fi
+
+            # Remove directory if it matches exactly
+            if [ -d "$pattern" ]; then
+              echo "Removing directory: $pattern"
+              rm -rf "$pattern"
+            fi
+
           done
 
+      # ---------------------------------------------------------
+      # Create ZIP
+      # ---------------------------------------------------------
       - name: Create zip file
         run: |
-          ZIP_NAME='${{ steps.vars.outputs.zip_name }}'
+          ZIP_NAME="${{ steps.vars.outputs.zip_name }}"
+          echo "Creating zip: $ZIP_NAME"
+
+          # Zip everything in the repo root after cleanup
           zip -r "$ZIP_NAME" .
 
+      # ---------------------------------------------------------
+      # Upload to release
+      # ---------------------------------------------------------
       - name: Upload zip as release asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME='${{ github.event.release.tag_name }}'
-          ZIP_NAME='${{ steps.vars.outputs.zip_name }}'
+          TAG_NAME="${{ steps.vars.outputs.tag_name }}"
+          ZIP_NAME="${{ steps.vars.outputs.zip_name }}"
 
           echo "Uploading $ZIP_NAME to release $TAG_NAME"
-
-          # GitHub CLI is available on GitHub-hosted runners.
           gh release upload "$TAG_NAME" "$ZIP_NAME" --clobber
