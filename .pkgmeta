@@ -4,3 +4,4 @@ ignore:
   - *.md
   - *.sh
   - LICENSE
+  - *.png
